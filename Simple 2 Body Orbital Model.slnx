@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Simple 2 Body Orbital Model/Simple 2 Body Orbital Model.vcxproj" Id="a3da301f-47fc-43cd-93ad-344081a26f0e" />
+</Solution>
