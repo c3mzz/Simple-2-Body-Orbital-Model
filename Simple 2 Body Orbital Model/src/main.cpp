@@ -1,5 +1,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <iostream>
 #include <fstream>
@@ -95,15 +97,28 @@ int main()
         earthVAO.AddBuffer(earthVBO, layout);
         IndexBuffer earthIBO(indices, 6);
 
+        glm::mat4 proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -1.0f, 1.0f);
+        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+        float moonX = 2.0f;
+        float moonY = 0.0f;
+
         while (!glfwWindowShouldClose(window))
         {
             glClear(GL_COLOR_BUFFER_BIT);
 
             glUseProgram(shader);
+            
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(moonX, moonY, 0.0f));
+            glm::mat4 mvp = proj * view * model;
+            int location = glGetUniformLocation(shader, "u_MVP");
+            glUniformMatrix4fv(location, 1, GL_FALSE, &mvp[0][0]);
+
             earthVAO.Bind();
             earthIBO.Bind();
-
             glDrawElements(GL_TRIANGLES, earthIBO.GetCount(), GL_UNSIGNED_INT, nullptr);
+
+            moonY += 0.01f;
+            if (moonY > 3.0f) moonY = -3.0f;
 
             glfwSwapBuffers(window);
             glfwPollEvents();
