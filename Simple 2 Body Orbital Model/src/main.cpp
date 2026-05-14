@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <vector>
 
 #include "VertexArray.h"
 #include "VertexBuffer.h"
@@ -43,21 +44,50 @@ int main()
         Shader shader("res/shaders/Basic.shader");
         shader.Bind();
 
-        float positions[] = {
-            -0.5f, -0.5f, // 0
-             0.5f, -0.5f, // 1
-             0.5f,  0.5f, // 2
-            -0.5f,  0.5f  // 3
+        // --- Moon ---
+        float moonPositions[] = {
+            -0.2f, -0.2f, // 0
+             0.2f, -0.2f, // 1
+             0.2f,  0.2f, // 2
+            -0.2f,  0.2f  // 3
         };
-        unsigned int indices[] = { 0, 1, 2, 2, 3, 0 };
+        unsigned int moonIndices[] = { 0, 1, 2, 2, 3, 0 };
 
+        VertexArray moonVAO;
+        VertexBuffer moonVBO(moonPositions, sizeof(moonPositions));
+        VertexBufferLayout moonLayout;
+        moonLayout.Push<float>(2);
+        moonVAO.AddBuffer(moonVBO, moonLayout);
+        IndexBuffer moonIBO(moonIndices, 6);
+
+        // --- Earth ---
+        int segments = 36;
+        float radius = 0.5f;
+        std::vector<float> earthVertices;
+        std::vector<unsigned int> earthIndices;
+
+        earthVertices.push_back(0.0f);
+        earthVertices.push_back(0.0f);
+        
+        const float PI = 3.14159265359f;
+        for (int i = 0; i <= segments; i++) {
+            float angle = i * (2.0f * PI / segments);
+            earthVertices.push_back(radius * std::cos(angle));
+            earthVertices.push_back(radius * std::sin(angle));
+        }
+
+        for (int i = 1; i <= segments; i++) {
+            earthIndices.push_back(0);
+            earthIndices.push_back(i);
+            earthIndices.push_back(i + 1);
+        }
 
         VertexArray earthVAO;
-        VertexBuffer earthVBO(positions, sizeof(positions));
-        VertexBufferLayout layout;
-        layout.Push<float>(2);
-        earthVAO.AddBuffer(earthVBO, layout);
-        IndexBuffer earthIBO(indices, 6);
+        VertexBuffer earthVBO(&earthVertices[0], earthVertices.size() * sizeof(float));
+        VertexBufferLayout earthLayout;
+        earthLayout.Push<float>(2);
+        earthVAO.AddBuffer(earthVBO, earthLayout);
+        IndexBuffer earthIBO(&earthIndices[0], earthIndices.size());
 
         glm::mat4 proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -1.0f, 1.0f);
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
@@ -99,9 +129,26 @@ int main()
             glm::mat4 mvp = proj * view * model;
             
             shader.Bind();
-            shader.SetUniformMat4("u_MVP", mvp);
+
+            // --- Earth ---
+            glm::mat4 earthModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+            glm::mat4 earthMVP = proj * view * earthModel;
+            
+            shader.SetUniformMat4("u_MVP", earthMVP);
+            shader.SetUniform4f("u_Color", 0.2f, 0.3f, 0.8f, 1.0f);
 
             renderer.Draw(earthVAO, earthIBO, shader);
+
+
+            // --- Moon ---
+            glm::mat4 moonModel = glm::translate(glm::mat4(1.0f), glm::vec3(moonX, moonY, 0.0f));
+            glm::mat4 moonMVP = proj * view * moonModel;
+            
+            shader.SetUniformMat4("u_MVP", moonMVP);
+            shader.SetUniform4f("u_Color", 0.7f, 0.7f, 0.7f, 1.0f);
+
+            renderer.Draw(moonVAO, moonIBO, shader);
+
 
             glfwSwapBuffers(window);
             glfwPollEvents();
