@@ -46,6 +46,13 @@ int main()
         Shader shader("res/shaders/Basic.shader");
         shader.Bind();
 
+
+        float camX = 0.0f;
+        float camY = 0.0f;
+        float camZoom = 1.0f;
+        float camSpeed = 0.05f;
+
+
         // --- Gen Circle ---
         int segments = 36;
         float radius = 1.0f;
@@ -94,11 +101,51 @@ int main()
         {
             renderer.Clear();
 
-            physics.UpdateRK4(solarSystem, 0.1f);
+            // --- Camera Input ---
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camY += camSpeed / camZoom;
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camY -= camSpeed / camZoom;
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camX -= camSpeed / camZoom;
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camX += camSpeed / camZoom;
+
+            // --- Zooming ---
+            if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camZoom *= 1.01f;
+            if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) camZoom *= 0.99f;
+
+            glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(-camX, -camY, 0.0f));
+
+            float aspect = 4.0f / 3.0f;
+            float width = 4.0f / camZoom;
+            float height = 3.0f / camZoom;
+            glm::mat4 proj = glm::ortho(-width, width, -height, height, -1.0f, 1.0f);
+
+            physics.UpdateRK4(solarSystem, 0.5f);
+
+            for (auto& p : solarSystem) {
+                p.trail.push_front(p.pos);
+                if (p.trail.size() > p.maxTrailSize) {
+                    p.trail.pop_back();
+                }
+            }
 
             shader.Bind();
             for (const Planet& p : solarSystem)
             {
+                for (size_t i = 0; i < p.trail.size(); ++i) {
+                    float sizeFactor = 1.0f - ((float)i / p.trail.size());
+                    float trailScale = p.radius * 0.4f * sizeFactor;
+
+                    glm::mat4 model = glm::mat4(1.0f);
+                    model = glm::translate(model, glm::vec3(p.trail[i].x, p.trail[i].y, 0.0f));
+                    model = glm::scale(model, glm::vec3(trailScale, trailScale, 1.0f));
+
+                    shader.SetUniformMat4("u_MVP", proj * view * model);
+                    shader.SetUniform4f("u_Color", p.r * 0.6f, p.g * 0.6f, p.b * 0.6f, 1.0f);
+
+                    glm::mat4 mvp = proj * view * model;
+                    shader.SetUniformMat4("u_MVP", mvp);
+                    renderer.Draw(masterVAO, masterIBO, shader);
+                }
+
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, glm::vec3(p.pos.x, p.pos.y, 0.0f));
                 model = glm::scale(model, glm::vec3(p.radius, p.radius, 1.0f));
