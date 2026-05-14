@@ -14,6 +14,8 @@
 #include "IndexBuffer.h"
 #include "Shader.h"
 #include "Renderer.h"
+#include "Planet.h"
+#include "PhysicsEngine.h"
 
 int main()
 {
@@ -44,111 +46,69 @@ int main()
         Shader shader("res/shaders/Basic.shader");
         shader.Bind();
 
-        // --- Moon ---
-        float moonPositions[] = {
-            -0.2f, -0.2f, // 0
-             0.2f, -0.2f, // 1
-             0.2f,  0.2f, // 2
-            -0.2f,  0.2f  // 3
-        };
-        unsigned int moonIndices[] = { 0, 1, 2, 2, 3, 0 };
-
-        VertexArray moonVAO;
-        VertexBuffer moonVBO(moonPositions, sizeof(moonPositions));
-        VertexBufferLayout moonLayout;
-        moonLayout.Push<float>(2);
-        moonVAO.AddBuffer(moonVBO, moonLayout);
-        IndexBuffer moonIBO(moonIndices, 6);
-
-        // --- Earth ---
+        // --- Gen Circle ---
         int segments = 36;
-        float radius = 0.5f;
-        std::vector<float> earthVertices;
-        std::vector<unsigned int> earthIndices;
+        float radius = 1.0f;
+        std::vector<float> circleVertices;
+        std::vector<unsigned int> circleIndices;
 
-        earthVertices.push_back(0.0f);
-        earthVertices.push_back(0.0f);
-        
+        circleVertices.push_back(0.0f);
+        circleVertices.push_back(0.0f);
+
         const float PI = 3.14159265359f;
         for (int i = 0; i <= segments; i++) {
             float angle = i * (2.0f * PI / segments);
-            earthVertices.push_back(radius * std::cos(angle));
-            earthVertices.push_back(radius * std::sin(angle));
+            circleVertices.push_back(radius * std::cos(angle));
+            circleVertices.push_back(radius * std::sin(angle));
         }
 
         for (int i = 1; i <= segments; i++) {
-            earthIndices.push_back(0);
-            earthIndices.push_back(i);
-            earthIndices.push_back(i + 1);
+            circleIndices.push_back(0);
+            circleIndices.push_back(i);
+            circleIndices.push_back(i + 1);
         }
 
-        VertexArray earthVAO;
-        VertexBuffer earthVBO(&earthVertices[0], earthVertices.size() * sizeof(float));
-        VertexBufferLayout earthLayout;
-        earthLayout.Push<float>(2);
-        earthVAO.AddBuffer(earthVBO, earthLayout);
-        IndexBuffer earthIBO(&earthIndices[0], earthIndices.size());
+        VertexArray masterVAO;
+        VertexBuffer masterVBO(&circleVertices[0], circleVertices.size() * sizeof(float));
+        VertexBufferLayout circleLayout;
+        circleLayout.Push<float>(2);
+        masterVAO.AddBuffer(masterVBO, circleLayout);
+        IndexBuffer masterIBO(&circleIndices[0], circleIndices.size());
+        // ------------------
+
 
         glm::mat4 proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -1.0f, 1.0f);
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
 
-        // --- Variable ---
-        float moonX = 2.0f;
-        float moonY = 0.0f;
-        float moonVx = 0.0f;
-        float moonVy = 0.02f;
+        std::vector<Planet> solarSystem;
 
-        float earthMass = 10.0f;
-        float G = 0.0001f;
-        // ----------------
+        //                               pos                     vel                mass     radius    r     g     b
+        solarSystem.push_back({ glm::vec2(0.0f, 0.0f), glm::vec2(0.0f, -0.01f),  1000.0f,  0.5f,    0.2f, 0.3f, 0.8f }); // Earth
+        solarSystem.push_back({ glm::vec2(2.0f, 0.0f), glm::vec2(0.0f, 0.22f),     10.0f,  0.15f,   0.7f, 0.7f, 0.7f }); // Moon 1
+        //solarSystem.push_back({ glm::vec2(-2.5f, 1.0f), glm::vec2(0.0f, -0.15f),    50.0f,  0.25f,   0.8f, 0.2f, 0.2f }); // Moon 2
 
+        PhysicsEngine physics;
         Renderer renderer;
 
         while (!glfwWindowShouldClose(window))
         {
             renderer.Clear();
 
-            float dx = 0.0f - moonX;
-            float dy = 0.0f - moonY;
-            float distance = std::sqrt(dx * dx + dy * dy);
+            physics.UpdateRK4(solarSystem, 0.1f);
 
-            if (distance > 0.1f)
-            {
-                float force = (G * earthMass) / (distance * distance);
-                float ax = force * (dx / distance);
-                float ay = force * (dy / distance);
-
-                moonVx += ax;
-                moonVy += ay;
-            }
-
-            moonX += moonVx;
-            moonY += moonVy;
-
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(moonX, moonY, 0.0f));
-            glm::mat4 mvp = proj * view * model;
-            
             shader.Bind();
+            for (const Planet& p : solarSystem)
+            {
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, glm::vec3(p.pos.x, p.pos.y, 0.0f));
+                model = glm::scale(model, glm::vec3(p.radius, p.radius, 1.0f));
+                glm::mat4 mvp = proj * view * model;
 
-            // --- Earth ---
-            glm::mat4 earthModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-            glm::mat4 earthMVP = proj * view * earthModel;
-            
-            shader.SetUniformMat4("u_MVP", earthMVP);
-            shader.SetUniform4f("u_Color", 0.2f, 0.3f, 0.8f, 1.0f);
+                shader.SetUniformMat4("u_MVP", mvp);
+                shader.SetUniform4f("u_Color", p.r, p.g, p.b, 1.0f);
 
-            renderer.Draw(earthVAO, earthIBO, shader);
-
-
-            // --- Moon ---
-            glm::mat4 moonModel = glm::translate(glm::mat4(1.0f), glm::vec3(moonX, moonY, 0.0f));
-            glm::mat4 moonMVP = proj * view * moonModel;
-            
-            shader.SetUniformMat4("u_MVP", moonMVP);
-            shader.SetUniform4f("u_Color", 0.7f, 0.7f, 0.7f, 1.0f);
-
-            renderer.Draw(moonVAO, moonIBO, shader);
-
+                renderer.Draw(masterVAO, masterIBO, shader);
+            }
 
             glfwSwapBuffers(window);
             glfwPollEvents();
