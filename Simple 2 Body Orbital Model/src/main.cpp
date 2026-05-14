@@ -11,46 +11,8 @@
 #include "VertexArray.h"
 #include "VertexBuffer.h"
 #include "IndexBuffer.h"
-
-struct ShaderProgramSource
-{
-    std::string VertexSource;
-    std::string FragmentSource;
-};
-
-
-static ShaderProgramSource ParseShader(const std::string& filepath)
-{
-    std::ifstream stream(filepath);
-
-    enum class ShaderType
-    {
-        NONE = -1, VERTEX = 0, FRAGMENT = 1
-    };
-
-    std::string line;
-    std::stringstream ss[2];
-    ShaderType type = ShaderType::NONE;
-    while (getline(stream, line))
-    {
-        if (line.find("#shader") != std::string::npos)
-        {
-            if (line.find("vertex") != std::string::npos)
-                type = ShaderType::VERTEX;
-            else if (line.find("fragment") != std::string::npos)
-                type = ShaderType::FRAGMENT;
-        }
-        else
-        {
-            ss[(int)type] << line << '\n';
-        }
-    }
-
-    return { ss[0].str(), ss[1].str() };
-}
-
-static unsigned int CompileShader(unsigned int type, const std::string& source);
-static int CreateShader(const std::string& vertexShader, const std::string& fragmentShader);
+#include "Shader.h"
+#include "Renderer.h"
 
 int main()
 {
@@ -78,8 +40,8 @@ int main()
 
     std::cout << glGetString(GL_VERSION) << std::endl;
     {
-        ShaderProgramSource source = ParseShader("res/shaders/Basic.shader");
-        unsigned int shader = CreateShader(source.VertexSource, source.FragmentSource);
+        Shader shader("res/shaders/Basic.shader");
+        shader.Bind();
 
         float positions[] = {
             -0.5f, -0.5f, // 0
@@ -99,93 +61,53 @@ int main()
 
         glm::mat4 proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -1.0f, 1.0f);
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+
+        // --- Variable ---
         float moonX = 2.0f;
         float moonY = 0.0f;
+        float moonVx = 0.0f;
+        float moonVy = 0.02f;
+
+        float earthMass = 10.0f;
+        float G = 0.0001f;
+        // ----------------
+
+        Renderer renderer;
 
         while (!glfwWindowShouldClose(window))
         {
-            glClear(GL_COLOR_BUFFER_BIT);
+            renderer.Clear();
 
-            glUseProgram(shader);
-            
+            float dx = 0.0f - moonX;
+            float dy = 0.0f - moonY;
+            float distance = std::sqrt(dx * dx + dy * dy);
+
+            if (distance > 0.1f)
+            {
+                float force = (G * earthMass) / (distance * distance);
+                float ax = force * (dx / distance);
+                float ay = force * (dy / distance);
+
+                moonVx += ax;
+                moonVy += ay;
+            }
+
+            moonX += moonVx;
+            moonY += moonVy;
+
             glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(moonX, moonY, 0.0f));
             glm::mat4 mvp = proj * view * model;
-            int location = glGetUniformLocation(shader, "u_MVP");
-            glUniformMatrix4fv(location, 1, GL_FALSE, &mvp[0][0]);
+            
+            shader.Bind();
+            shader.SetUniformMat4("u_MVP", mvp);
 
-            earthVAO.Bind();
-            earthIBO.Bind();
-            glDrawElements(GL_TRIANGLES, earthIBO.GetCount(), GL_UNSIGNED_INT, nullptr);
-
-            moonY += 0.01f;
-            if (moonY > 3.0f) moonY = -3.0f;
+            renderer.Draw(earthVAO, earthIBO, shader);
 
             glfwSwapBuffers(window);
             glfwPollEvents();
         }
 
-        glDeleteProgram(shader);
     }
     glfwTerminate();
     return 0;
-}
-
-
-static unsigned int CompileShader(unsigned int type, const std::string& source)
-{
-    unsigned int id = glCreateShader(type);
-    const char* src = source.c_str();
-    glShaderSource(id, 1, &src, nullptr);
-    glCompileShader(id);
-
-    int result;
-    glGetShaderiv(id, GL_COMPILE_STATUS, &result);
-    if (result == GL_FALSE)
-    {
-        int length;
-        glGetShaderiv(id, GL_INFO_LOG_LENGTH, &length);
-        char* message = (char*)alloca(length * sizeof(char));
-        glGetShaderInfoLog(id, length, &length, message);
-        std::cout << "Failed to compile shader!" << (type == GL_VERTEX_SHADER ? "vertex" : "fragment") << std::endl;
-        std::cout << message << std::endl;
-        glDeleteShader(id);
-        return 0;
-    }
-    return id;
-}
-
-static int CreateShader(const std::string& vertexShader, const std::string& fragmentShader)
-{
-    unsigned int program = glCreateProgram();
-    unsigned int vs = CompileShader(GL_VERTEX_SHADER, vertexShader);
-    unsigned int fs = CompileShader(GL_FRAGMENT_SHADER, fragmentShader);
-
-    glAttachShader(program, vs);
-    glAttachShader(program, fs);
-
-
-    glLinkProgram(program);
-    int isLinked;
-    glGetProgramiv(program, GL_LINK_STATUS, &isLinked);
-    if (isLinked == GL_FALSE)
-    {
-        int length;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
-        char* message = (char*)alloca(length * sizeof(char));
-        glGetProgramInfoLog(program, length, &length, message);
-
-        std::cout << "Failed to link shader program!" << std::endl;
-        std::cout << message << std::endl;
-
-        glDeleteProgram(program);
-        return 0;
-    }
-
-
-    glValidateProgram(program);
-
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-
-    return program;
 }
